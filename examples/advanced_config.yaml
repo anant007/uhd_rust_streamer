@@ -1,0 +1,274 @@
+# RFNoC Tool Advanced Configuration
+# This example demonstrates all available configuration options
+
+# Device configuration
+device:
+  # UHD device arguments
+  args: "addr=192.168.10.2,master_clock_rate=200e6"
+  
+  # Timeout for device operations (seconds)
+  timeout: 3.0
+  
+  # Clock source: internal, external, gpsdo
+  clock_source: "internal"
+  
+  # Time source: internal, external, gpsdo
+  time_source: "internal"
+  
+  # PPS reset configuration for timing synchronization
+  pps_reset:
+    enable: true
+    wait_time_sec: 1.5
+    verify_reset: true
+    max_time_after_reset: 1.0
+
+# Stream configuration
+stream:
+  # Output directory for capture files
+  output_directory: "./captures"
+  
+  # Default tick rate (Hz)
+  tick_rate: 200000000
+  
+  # Multi-stream configuration
+  multi_stream:
+    # Enable multi-stream capture
+    enable: true
+    
+    # Synchronize stream start times
+    sync_streams: true
+    
+    # Write each stream to a separate file
+    separate_files: true
+    
+    # File prefix for stream files
+    file_prefix: "stream"
+    
+    # Maximum number of streams (0 = unlimited)
+    max_streams: 4
+    
+    # Delay before synchronized start (seconds)
+    sync_delay: 0.1
+    
+    # Specific blocks to stream from
+    stream_blocks:
+      - "0/DDC#0"
+      - "0/DDC#1"
+    
+    # Buffer configuration
+    buffer_config:
+      # Ring buffer size per stream (bytes)
+      ring_buffer_size: 268435456  # 256 MB
+      
+      # Number of packets to batch before writing
+      batch_write_size: 1000
+      
+      # Enable compression (not implemented yet)
+      enable_compression: false
+      
+      # Buffer usage warning threshold (percentage)
+      high_water_mark: 90
+      
+      # Low buffer usage threshold (percentage)
+      low_water_mark: 10
+
+# Graph configuration
+graph:
+  # Dynamic connections to establish
+  connections:
+    # Radio to DDC connections
+    - src_block: "0/Radio#0"
+      src_port: 0
+      dst_block: "0/DDC#0"
+      dst_port: 0
+      is_back_edge: false
+    
+    - src_block: "0/Radio#0"
+      src_port: 1
+      dst_block: "0/DDC#0"
+      dst_port: 1
+      is_back_edge: false
+    
+    # Example of complex routing through switchboard
+    - src_block: "0/Radio#1"
+      src_port: 0
+      dst_block: "0/Switchboard#0"
+      dst_port: 0
+    
+    - src_block: "0/Switchboard#0"
+      src_port: 0
+      dst_block: "0/DDC#1"
+      dst_port: 0
+  
+  # Explicit signal paths (alternative to connections)
+  signal_paths:
+    - name: "Primary receive chain"
+      connections:
+        - src: "0/Radio#0:0"
+          dst: "0/DDC#0:0"
+        - src: "0/Radio#0:1"
+          dst: "0/DDC#0:1"
+    
+    - name: "Secondary receive chain with processing"
+      connections:
+        - src: "0/Radio#1:0"
+          dst: "0/FIR#0:0"
+        - src: "0/FIR#0:0"
+          dst: "0/DDC#1:0"
+  
+  # Switchboard routing configuration
+  switchboards:
+    - block_id: "0/Switchboard#0"
+      connections:
+        # Map input port to output port
+        0: 0
+        1: 1
+        2: 3  # Example of non-direct routing
+  
+  # Stream endpoint configuration
+  stream_endpoints:
+    - block_id: "0/DDC#0"
+      port: 0
+      direction: "rx"
+      enabled: true
+      stream_name: "DDC0_Port0"
+      stream_args:
+        spp: "200"  # Samples per packet
+    
+    - block_id: "0/DDC#0"
+      port: 1
+      direction: "rx"
+      enabled: true
+      stream_name: "DDC0_Port1"
+      stream_args:
+        spp: "200"
+    
+    - block_id: "0/DDC#1"
+      port: 0
+      direction: "rx"
+      enabled: false  # Disabled example
+      stream_name: "DDC1_Port0"
+  
+  # Block-specific properties
+  block_properties:
+    # Radio configuration
+    "0/Radio#0":
+      freq/0: "1e9"      # 1 GHz
+      freq/1: "1.1e9"    # 1.1 GHz
+      gain/0: "30"       # 30 dB
+      gain/1: "25"       # 25 dB
+      antenna/0: "RX2"
+      antenna/1: "RX2"
+      bandwidth/0: "56e6"
+      bandwidth/1: "56e6"
+      rate: "200e6"      # 200 Msps
+    
+    # DDC configuration
+    "0/DDC#0":
+      freq/0: "0"        # No frequency shift
+      freq/1: "1e6"      # 1 MHz shift
+      output_rate/0: "25e6"   # 25 Msps output
+      output_rate/1: "10e6"   # 10 Msps output
+    
+    "0/DDC#1":
+      freq/0: "-500e3"   # -500 kHz shift
+      output_rate/0: "5e6"    # 5 Msps output
+    
+    # FIR filter configuration
+    "0/FIR#0":
+      coeffs/0: "1,2,3,4,5,4,3,2,1"  # Simple symmetric filter
+    
+    # Signal generator (if present)
+    "0/SigGen#0":
+      enable/0: "true"
+      waveform/0: "sine"
+      amplitude/0: "0.5"
+      frequency/0: "1000"  # 1 kHz tone
+  
+  # Auto-connection settings
+  auto_connect:
+    # Automatically connect Radio outputs to DDC inputs
+    radio_to_ddc: false
+    
+    # Automatically find stream endpoints
+    find_stream_endpoint: true
+  
+  # Advanced options
+  advanced:
+    # Commit graph after each connection (slower but safer)
+    commit_after_each_connection: false
+    
+    # Discover static connections from FPGA
+    discover_static_connections: true
+    
+    # Preserve static routing (don't override FPGA connections)
+    preserve_static_routes: true
+    
+    # Specific initialization order for blocks
+    block_init_order:
+      - "0/Radio#0"
+      - "0/Radio#1"
+      - "0/DDC#0"
+      - "0/DDC#1"
+      - "0/FIR#0"
+
+# Logging configuration
+logging:
+  # Tracing configuration (structured logging)
+  tracing:
+    level: "INFO"  # TRACE, DEBUG, INFO, WARN, ERROR
+    spans:
+      - "device_io"
+      - "signal_processing"
+      - "timing"
+      - "buffer_management"
+    format: "pretty"  # pretty, json, compact
+    file: "rfnoc_trace.log"
+  
+  # System log configuration (traditional logging)
+  system:
+    appenders:
+      - "file"
+      - "console"
+    rotation: "100MB"  # Rotate after 100MB
+    directory: "./logs"
+  
+  # Telemetry configuration (optional)
+  telemetry:
+    enable: true
+    endpoint: "http://localhost:9090/metrics"
+    interval_sec: 10
+
+# Performance configuration
+performance:
+  # Number of worker threads
+  worker_threads: 4
+  
+  # CPU affinity (pin threads to specific CPUs)
+  cpu_affinity: [2, 3, 4, 5]
+  
+  # Real-time priority (requires root)
+  realtime_priority: 50
+  
+  # Lock memory to prevent paging
+  lock_memory: true
+  
+  # Use huge pages for buffers
+  use_huge_pages: true
+
+# Analysis configuration (for post-processing)
+analysis:
+  # Enable automatic analysis after capture
+  auto_analyze: true
+  
+  # Analysis output format
+  output_format: "csv"
+  
+  # Include timing analysis
+  timing_analysis: true
+  
+  # Include spectrum analysis
+  spectrum_analysis: false
+  
+  # Maximum packets to analyze (0 = all)
+  max_packets: 100000

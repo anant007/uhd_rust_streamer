@@ -1,0 +1,89 @@
+[package]
+name = "rfnoc-tool"
+version = "0.1.0"
+edition = "2021"
+authors = ["RFNoC Tool Team"]
+description = "High-performance RFNoC streaming and analysis tool"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Async runtime - using smol for better real-time performance
+smol = "2.0"
+async-channel = "2.1"
+futures-lite = "2.1"
+
+# FFI and UHD bindings
+cxx = "1.0"
+cxx-build = "1.0"
+libc = "0.2"
+
+# Data structures and serialization
+rtrb = "0.3"  # Real-time ring buffer
+crossbeam = { version = "0.8", features = ["crossbeam-channel"] }
+zerocopy = "0.7"
+rkyv = { version = "0.7", features = ["validation", "size_32"] }
+bytemuck = "1.14"
+
+# Configuration and serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+toml = "0.8"
+
+# Logging and telemetry
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+tracing-appender = "0.2"
+log = "0.4"
+log4rs = "1.2"
+
+# CLI and REPL
+clap = { version = "4.4", features = ["derive", "color", "suggestions"] }
+rustyline = "13.0"
+rustyline-derive = "0.10"
+colored = "2.1"
+indicatif = "0.17"
+console = "0.15"
+
+# Data export
+csv = "1.3"
+hdf5 = "0.8"  # For MATLAB export
+arrow = { version = "50.0", features = ["csv", "json"] }  # For high-performance data handling
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Utilities
+chrono = "0.4"
+num-complex = "0.4"
+num-traits = "0.2"
+parking_lot = "0.12"
+dashmap = "5.5"
+once_cell = "1.19"
+
+# Performance monitoring
+metrics = "0.22"
+metrics-exporter-prometheus = "0.13"
+
+# Testing
+proptest = "1.4"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[dev-dependencies]
+tempfile = "3.9"
+mockall = "0.12"
+serial_test = "3.0"
+
+[build-dependencies]
+cxx-build = "1.0"
+cc = "1.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+debug = false
+
+[[bin]]
+name = "rfnoc-tool"
+path = "src/main.rs"
