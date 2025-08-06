@@ -46,7 +46,7 @@ mod ffi {
     }
     
     unsafe extern "C++" {
-        include!("rfnoc_tool/uhd_wrapper.h");
+        include!("src/hardware/uhd_wrapper.h");
         
         type RfnocGraphWrapper;
         type RxStreamerWrapper;
@@ -99,12 +99,21 @@ mod ffi {
             timeout: f64,
         ) -> Result<usize>;
         
-        /// Issue stream command
+        /// Issue stream command with time
+        fn issue_stream_cmd_timed(
+            self: Pin<&mut RxStreamerWrapper>,
+            stream_mode: u32,
+            num_samps: u64,
+            time_secs: u64,
+            time_nsecs: u32,
+            stream_now: bool,
+        ) -> Result<()>;
+        
+        /// Issue stream command without time
         fn issue_stream_cmd(
             self: Pin<&mut RxStreamerWrapper>,
             stream_mode: u32,
             num_samps: u64,
-            time_spec: Option<&TimeSpec>,
             stream_now: bool,
         ) -> Result<()>;
         
@@ -383,29 +392,38 @@ impl RxStreamer {
     
     /// Issue stream command
     pub fn issue_stream_cmd(&mut self, cmd: StreamCommand) -> Result<()> {
-        let (mode, num_samps, time_spec, stream_now) = match cmd {
+        match cmd {
             StreamCommand::StartContinuous => {
-                (stream_mode::START_CONTINUOUS, 0, None, true)
+                self.inner
+                    .pin_mut()
+                    .issue_stream_cmd(stream_mode::START_CONTINUOUS, 0, true)
+                    .map_err(|e| Error::UhdError(e.to_string()))
             }
             StreamCommand::StartNumSamps(n) => {
-                (stream_mode::NUM_SAMPS_AND_DONE, n, None, true)
+                self.inner
+                    .pin_mut()
+                    .issue_stream_cmd(stream_mode::NUM_SAMPS_AND_DONE, n, true)
+                    .map_err(|e| Error::UhdError(e.to_string()))
             }
             StreamCommand::StopContinuous => {
-                (stream_mode::STOP_CONTINUOUS, 0, None, true)
+                self.inner
+                    .pin_mut()
+                    .issue_stream_cmd(stream_mode::STOP_CONTINUOUS, 0, true)
+                    .map_err(|e| Error::UhdError(e.to_string()))
             }
             StreamCommand::StartAtTime(n, time) => {
-                let ts = ffi::TimeSpec {
-                    secs: time.secs,
-                    nsecs: time.nsecs,
-                };
-                (stream_mode::NUM_SAMPS_AND_DONE, n, Some(&ts), false)
+                self.inner
+                    .pin_mut()
+                    .issue_stream_cmd_timed(
+                        stream_mode::NUM_SAMPS_AND_DONE,
+                        n,
+                        time.secs,
+                        time.nsecs,
+                        false,
+                    )
+                    .map_err(|e| Error::UhdError(e.to_string()))
             }
-        };
-        
-        self.inner
-            .pin_mut()
-            .issue_stream_cmd(mode, num_samps, time_spec, stream_now)
-            .map_err(|e| Error::UhdError(e.to_string()))
+        }
     }
 }
 

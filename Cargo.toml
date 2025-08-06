@@ -11,6 +11,9 @@ license = "MIT OR Apache-2.0"
 smol = "2.0"
 async-channel = "2.1"
 futures-lite = "2.1"
+tokio = { version = "1.35", features = ["full"] }
+ctrlc = "3.4"
+prettytable-rs = "0.10"
 
 # FFI and UHD bindings
 cxx = "1.0"
