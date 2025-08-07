@@ -261,7 +261,7 @@ On a typical system (Intel i7, NVMe SSD):
 
 ## License
 
-This project is dual-licensed under MIT OR Apache-2.0.
+This project is licensed under GPL 3.0.
 
 ## Acknowledgments
 
