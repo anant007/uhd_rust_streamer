@@ -17,7 +17,6 @@ prettytable-rs = "0.10"
 
 # FFI and UHD bindings
 cxx = "1.0"
-cxx-build = "1.0"
 libc = "0.2"
 
 # Data structures and serialization
@@ -31,6 +30,7 @@ bytemuck = "1.14"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 toml = "0.8"
+serde_json = "1.0"
 
 # Logging and telemetry
 tracing = "0.1"
@@ -47,10 +47,10 @@ colored = "2.1"
 indicatif = "0.17"
 console = "0.15"
 
-# Data export
+# Data export - Use arrow 52.0 to avoid the conflict
 csv = "1.3"
 hdf5 = "0.8"  # For MATLAB export
-arrow = { version = "50.0", features = ["csv", "json"] }  # For high-performance data handling
+arrow = { version = "52.0", features = ["csv", "json"] }
 
 # Error handling
 thiserror = "1.0"
@@ -63,14 +63,11 @@ num-traits = "0.2"
 parking_lot = "0.12"
 dashmap = "5.5"
 once_cell = "1.19"
+async-trait = "0.1"
 
 # Performance monitoring
 metrics = "0.22"
 metrics-exporter-prometheus = "0.13"
-
-# Testing
-proptest = "1.4"
-criterion = { version = "0.5", features = ["html_reports"] }
 
 [dev-dependencies]
 tempfile = "3.9"

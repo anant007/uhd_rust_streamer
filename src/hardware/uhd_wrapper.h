@@ -8,6 +8,7 @@
 #include <uhd/rfnoc/block_id.hpp>
 #include <uhd/rfnoc/noc_block_base.hpp>
 #include <uhd/stream.hpp>
+#include "cxxbridge/rust/cxx.h"
 
 namespace rfnoc_tool {
 
@@ -81,7 +82,13 @@ public:
     size_t recv_samples(rust::Slice<uint8_t> buffs, size_t nsamps_per_buff,
                        RxMetadata& metadata, double timeout);
     void issue_stream_cmd(uint32_t stream_mode, uint64_t num_samps,
-                         const TimeSpec* time_spec, bool stream_now);
+                         bool stream_now);
+    void issue_stream_cmd_timed(uint32_t stream_mode, uint64_t num_samps,
+                               uint64_t time_secs, uint32_t time_nsecs,
+                               bool stream_now);
+    
+    // Add getter for streamer
+    uhd::rx_streamer::sptr get_streamer() const;
 
 private:
     uhd::rx_streamer::sptr streamer_;

@@ -1,8 +1,9 @@
 #include "uhd_wrapper.h"
 #include <uhd/rfnoc_graph.hpp>
+#include <uhd/rfnoc/mb_controller.hpp>
 #include <uhd/types/stream_cmd.hpp>
 #include <uhd/exception.hpp>
-#include "rust/cxx.h"
+// #include "rust/cxx.h"
 
 namespace rfnoc_tool {
 
@@ -22,10 +23,13 @@ rust::Vec<rust::String> RfnocGraphWrapper::get_block_ids() const {
 }
 
 std::unique_ptr<BlockControlWrapper> RfnocGraphWrapper::get_block(rust::Str block_id) const {
-    uhd::rfnoc::block_id_t id(std::string(block_id));
-    auto block = graph_->get_block(id);
+    std::string block_id_str(block_id.data(), block_id.size());// Was failing due to incorrect conversion from rust string to std::string, seems fixed now
+    uhd::rfnoc::block_id_t id(block_id_str);
+    // Use get_block<noc_block_base> instead of get_block with block_id
+    auto block = graph_->get_block<uhd::rfnoc::noc_block_base>(id);
     if (!block) {
-        throw rust::Error("Block not found");
+        std::string error_msg = "Block not found: " + block_id_str;
+        throw rust::Error(error_msg); //Used string literal to get rid of rust::String conversion/initialisation error
     }
     return std::make_unique<BlockControlWrapper>(block);
 }
@@ -74,20 +78,29 @@ std::unique_ptr<RxStreamerWrapper> RfnocGraphWrapper::create_rx_streamer(const S
 
 void RfnocGraphWrapper::connect_rx_streamer(const RxStreamerWrapper& streamer,
                                             rust::Str block_id, size_t port) {
-    graph_->connect(std::string(block_id), port, streamer.streamer_, 0);
+    // Connect using the streamer's get_streamer() method
+    graph_->connect(std::string(block_id), port, streamer.get_streamer(), 0);
 }
 
 double RfnocGraphWrapper::get_tick_rate() const {
-    return graph_->get_tick_rate();
+    // Get tick rate from the first radio block or use default
+    auto radio_blocks = graph_->find_blocks("Radio");
+    if (!radio_blocks.empty()) {
+        auto radio = graph_->get_block<uhd::rfnoc::noc_block_base>(radio_blocks[0]);
+        return radio->get_tick_rate();
+    }
+    // Return default tick rate if no radio blocks found
+    return 200e6; // 200 MHz default
 }
 
 void RfnocGraphWrapper::set_time_next_pps(const TimeSpec& time_spec) {
     uhd::time_spec_t ts(time_spec.secs, time_spec.nsecs / 1e9);
-    graph_->get_mb_controller()->get_timekeeper(0)->set_time_next_pps(ts);
+    // Use mb_controller index 0
+    graph_->get_mb_controller(0)->get_timekeeper(0)->set_time_next_pps(ts);
 }
 
 TimeSpec RfnocGraphWrapper::get_time_now() const {
-    auto ts = graph_->get_mb_controller()->get_timekeeper(0)->get_time_now();
+    auto ts = graph_->get_mb_controller(0)->get_timekeeper(0)->get_time_now();
     TimeSpec result;
     result.secs = ts.get_full_secs();
     result.nsecs = static_cast<uint32_t>(ts.get_frac_secs() * 1e9);
@@ -99,6 +112,10 @@ RxStreamerWrapper::RxStreamerWrapper(uhd::rx_streamer::sptr streamer)
     : streamer_(streamer) {}
 
 RxStreamerWrapper::~RxStreamerWrapper() = default;
+
+uhd::rx_streamer::sptr RxStreamerWrapper::get_streamer() const {
+    return streamer_;
+}
 
 size_t RxStreamerWrapper::recv_samples(rust::Slice<uint8_t> buffs, size_t nsamps_per_buff,
                                        RxMetadata& metadata, double timeout) {
@@ -182,7 +199,7 @@ std::unique_ptr<RfnocGraphWrapper> create_rfnoc_graph(const DeviceArgs& args) {
         auto graph = uhd::rfnoc::rfnoc_graph::make(std::string(args.args));
         return std::make_unique<RfnocGraphWrapper>(graph);
     } catch (const uhd::exception& e) {
-        throw rust::Error(e.what());
+        throw rust::Error(rust::String(e.what()));
     }
 }
 
