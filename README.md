@@ -245,14 +245,6 @@ On a typical system (Intel i7, NVMe SSD):
 - Ring buffer latency: <20µs average
 - Export throughput: >1 GB/s to SSD
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
-
 ### Code Style
 - Run `cargo fmt` before committing
 - Run `cargo clippy` and address warnings
