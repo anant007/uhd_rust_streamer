@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::time::Duration;
 use crate::error::{Error, Result};
 
-#[cxx::bridge]
+#[cxx::bridge(namespace = "rfnoc_tool")]
 mod ffi {
     /// Stream arguments
     struct StreamArgs {

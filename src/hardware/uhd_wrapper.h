@@ -8,7 +8,7 @@
 #include <uhd/rfnoc/block_id.hpp>
 #include <uhd/rfnoc/noc_block_base.hpp>
 #include <uhd/stream.hpp>
-#include "cxxbridge/rust/cxx.h"
+#include "rust/cxx.h"
 
 namespace rfnoc_tool {
 
