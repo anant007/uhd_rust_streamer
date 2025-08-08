@@ -1,110 +1,113 @@
 use std::env;
 use std::path::PathBuf;
+use std::process::Command;
 
 fn main() {
-    // Find UHD installation
-    let uhd_dir = find_uhd_dir();
-    
-    // Print cargo directives
     println!("cargo:rerun-if-changed=src/hardware/uhd_wrapper.h");
     println!("cargo:rerun-if-changed=src/hardware/uhd_wrapper.cpp");
+    println!("cargo:rerun-if-changed=src/hardware/uhd_bindings.rs");
+
+    // Get UHD paths using pkg-config
+    let uhd_prefix = get_uhd_prefix();
+    let uhd_include = uhd_prefix.join("include");
+    let uhd_lib = uhd_prefix.join("lib");
+
+    // Get Boost include path
+    let boost_include = get_boost_include_path();
+
+    // Build the cxx bridge
+    let mut bridge = cxx_build::bridge("src/hardware/uhd_bindings.rs");
     
-    // Set up include paths
-    let uhd_include = uhd_dir.join("include");
-    let boost_include = find_boost_include();
+    // CRITICAL: Add the project root to the include path so it can find src/hardware/uhd_wrapper.h
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    bridge.include(&manifest_dir);
     
-    // Build the C++ wrapper
-    cxx_build::bridge("src/hardware/uhd_bindings.rs")
-        .file("src/hardware/uhd_wrapper.cpp")
-        .include(&uhd_include)
-        .include(&boost_include)
-        .include("src/hardware")
-        .flag_if_supported("-std=c++14")
-        .flag_if_supported("-O3")
-        .flag_if_supported("-march=native")
-        .compile("uhd_wrapper");
+    // Add other include directories
+    bridge.include(&uhd_include);
+    bridge.include("/usr/local/include");
+    bridge.include("/usr/include");
     
-    // Link UHD library
-    let uhd_lib_dir = uhd_dir.join("lib");
-    println!("cargo:rustc-link-search=native={}", uhd_lib_dir.display());
+    if let Some(boost_path) = boost_include {
+        bridge.include(boost_path);
+    }
+    
+    // Add the actual source file
+    bridge.file("src/hardware/uhd_wrapper.cpp");
+    
+    // Set C++ standard and optimization flags
+    bridge.flag("-std=c++14");
+    bridge.flag("-O3");
+    bridge.flag("-march=native");
+    
+    // Set defines if needed
+    bridge.define("BOOST_ALL_DYN_LINK", None);
+    bridge.define("BOOST_ALL_NO_LIB", None);
+    
+    // Compile the bridge
+    bridge.compile("uhd_wrapper");
+
+    // Link libraries
+    println!("cargo:rustc-link-search=native={}", uhd_lib.display());
     println!("cargo:rustc-link-lib=dylib=uhd");
-    
-    // Link Boost libraries if needed
     println!("cargo:rustc-link-lib=dylib=boost_system");
     println!("cargo:rustc-link-lib=dylib=boost_thread");
+    println!("cargo:rustc-link-lib=dylib=boost_program_options");
+    println!("cargo:rustc-link-lib=dylib=stdc++");
+    println!("cargo:rustc-link-lib=dylib=pthread");
 }
 
-fn find_uhd_dir() -> PathBuf {
-    // Try environment variable first
-    if let Ok(uhd_dir) = env::var("UHD_DIR") {
-        return PathBuf::from(uhd_dir);
-    }
-    
-    // Try pkg-config
-    if let Ok(output) = std::process::Command::new("pkg-config")
-        .args(&["--variable=prefix", "uhd"])
+fn get_uhd_prefix() -> PathBuf {
+    let output = Command::new("pkg-config")
+        .args(["--variable=prefix", "uhd"])
         .output()
-    {
-        if output.status.success() {
-            let prefix = String::from_utf8_lossy(&output.stdout);
-            return PathBuf::from(prefix.trim());
-        }
+        .expect("Failed to run pkg-config for UHD");
+    
+    if !output.status.success() {
+        panic!("pkg-config failed for UHD. Make sure UHD is installed and pkg-config can find it.");
     }
     
-    // Try common locations
-    let common_paths = vec![
-        "/usr/local",
-        "/usr",
-        "/opt/uhd",
-        "C:\\Program Files\\UHD",
-    ];
+    let prefix = String::from_utf8(output.stdout)
+        .expect("Invalid UTF-8 in pkg-config output")
+        .trim()
+        .to_string();
     
-    for path in common_paths {
-        let path = PathBuf::from(path);
-        if path.join("include/uhd").exists() {
-            return path;
-        }
+    if prefix.is_empty() {
+        // Fallback to default location
+        PathBuf::from("/usr/local")
+    } else {
+        PathBuf::from(prefix)
     }
-    
-    panic!("Could not find UHD installation. Please set UHD_DIR environment variable.");
 }
 
-fn find_boost_include() -> PathBuf {
-    // Try environment variable
-    if let Ok(boost_dir) = env::var("BOOST_ROOT") {
-        return PathBuf::from(boost_dir).join("include");
-    }
-    
-    // Try pkg-config
-    if let Ok(output) = std::process::Command::new("pkg-config")
-        .args(&["--cflags", "boost"])
-        .output()
+fn get_boost_include_path() -> Option<PathBuf> {
+    // Try to find Boost using pkg-config first
+    if let Ok(output) = Command::new("pkg-config")
+        .args(["--cflags", "boost"])
+        .output() 
     {
         if output.status.success() {
             let flags = String::from_utf8_lossy(&output.stdout);
             for flag in flags.split_whitespace() {
-                if flag.starts_with("-I") {
-                    return PathBuf::from(&flag[2..]);
+                if let Some(path) = flag.strip_prefix("-I") {
+                    return Some(PathBuf::from(path));
                 }
             }
         }
     }
     
-    // Try common locations
-    let common_paths = vec![
-        "/usr/include",
-        "/usr/local/include",
-        "/opt/boost/include",
-        "C:\\boost\\include",
+    // Check common locations
+    let common_paths = [
+        "/usr/include/boost",
+        "/usr/local/include/boost",
+        "/opt/homebrew/include",
     ];
     
-    for path in common_paths {
-        let path = PathBuf::from(path);
-        if path.join("boost/version.hpp").exists() {
-            return path;
+    for path in &common_paths {
+        let boost_path = PathBuf::from(path);
+        if boost_path.exists() {
+            return Some(boost_path.parent().unwrap().to_path_buf());
         }
     }
     
-    // Default to system include
-    PathBuf::from("/usr/include")
+    None
 }
