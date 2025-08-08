@@ -1,0 +1,154 @@
+# Rust-specific
+/target/
+# Cargo.lock  # Remove this line if this is a binary project
+**/*.rs.bk
+*.pdb
+
+# C/C++ build artifacts
+*.o
+*.obj
+*.so
+*.so.*
+*.dylib
+*.dll
+*.a
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.exe
+*.out
+
+# C/C++ intermediate files
+*.i
+*.ii
+*.s
+*.bc
+
+# Static libraries (but keep if they're vendored dependencies)
+# Uncomment the next line if you don't want to track static libs
+# *.a
+
+# Shared libraries
+*.so
+*.so.*
+*.dylib
+*.dll
+
+# CMake build artifacts
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+build/
+Build/
+BUILD/
+
+# Autotools
+*.in
+Makefile.in
+aclocal.m4
+autom4te.cache/
+config.guess
+config.h
+config.h.in
+config.log
+config.status
+config.sub
+configure
+depcomp
+install-sh
+ltmain.sh
+missing
+stamp-h1
+
+# pkg-config files
+*.pc
+
+# Bindgen generated files (if using rust-bindgen)
+src/bindings.rs
+bindings.rs
+
+# cbindgen generated files (if using cbindgen)
+target/cbindgen/
+*.h.generated
+
+# Build directories
+build/
+dist/
+out/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependency directories (if using package managers for C++ deps)
+node_modules/
+vcpkg_installed/
+conan/
+
+# Platform-specific
+# Windows
+*.exe
+*.msi
+*.msm
+*.msp
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+
+# Profiling and debugging
+*.gcda
+*.gcno
+*.gcov
+callgrind.out.*
+massif.out.*
+perf.data
+perf.data.old
+
+# Documentation build
+docs/_build/
+doc/_build/
+target/doc/
+
+# Test artifacts
+*.profraw
+*.profdata
+
+# Local configuration
