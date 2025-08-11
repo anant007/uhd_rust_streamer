@@ -21,7 +21,7 @@ libc = "0.2"
 
 # Data structures and serialization
 rtrb = "0.3"  # Real-time ring buffer
-crossbeam = { version = "0.8", features = ["crossbeam-channel"] }
+crossbeam = { version = "0.8", features = ["crossbeam-channel", "crossbeam-queue"] }
 zerocopy = { version = "0.8", features = ["derive"] }
 bytemuck = { version = "1.14", features = ["derive"] }
 rkyv = { version = "0.8.11" }

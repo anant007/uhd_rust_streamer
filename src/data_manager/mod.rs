@@ -33,7 +33,7 @@ pub struct DataManager {
     /// Storage backend
     storage_backend: Arc<dyn StorageBackend>,
     /// Active streams
-    active_streams: DashMap<usize, StreamInfo>,
+    active_streams: DashMap<AtomicUsize, StreamInfo>,
     /// Statistics
     stats: Arc<DataManagerStats>,
 }

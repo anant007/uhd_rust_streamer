@@ -50,7 +50,7 @@ pub struct PacketBuffer {
 
 /// File header for captured data
 #[repr(C)]
-#[derive(Debug, Clone, Copy, IntoBytes, FromBytes, FromZeros)]
+#[derive(Debug, Clone, Copy, IntoBytes, FromZeros)]
 pub struct FileHeader {
     /// Magic number (0x43484452 = "CHDR")
     pub magic: u32,
@@ -58,12 +58,13 @@ pub struct FileHeader {
     pub version: u32,
     /// Stream ID
     pub stream_id: u32,
+    pub _pad0: [u8; 4],
     /// Tick rate
     pub tick_rate: f64,
     /// PPS reset used (as u8 for POD compatibility)
     pub pps_reset_used: u8,
     /// Padding for alignment
-    pub _padding: [u8; 3],
+    pub _pad1: [u8; 7],
     /// PPS reset time
     pub pps_reset_time_sec: f64,
     /// Reserved for future use
@@ -76,9 +77,10 @@ impl Default for FileHeader {
             magic: 0x43484452,
             version: 4,
             stream_id: 0,
+            _pad0: [0; 4],
             tick_rate: 200e6,
             pps_reset_used: 0,
-            _padding: [0; 3],
+            _pad1: [0; 7],
             pps_reset_time_sec: 0.0,
             reserved: [0; 32],
         }
