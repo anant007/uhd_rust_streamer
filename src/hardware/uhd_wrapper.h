@@ -8,11 +8,10 @@
 #include <uhd/rfnoc/block_id.hpp>
 #include <uhd/rfnoc/noc_block_base.hpp>
 #include <uhd/stream.hpp>
-<<<<<<< HEAD
+
 #include "rust/cxx.h"
-=======
-#include "target/cxxbridge/rust/cxx.h"
->>>>>>> dd8dc7e (Latest changes committed, still unsure as to what the core problems are)
+
+// #include "target/cxxbridge/rust/cxx.h"
 
 namespace rfnoc_tool {
 
