@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use rtrb::{Producer, Consumer, RingBuffer};
-use zerocopy::{AsBytes, FromBytes, FromZeroes};
+use zerocopy::{IntoBytes, FromBytes, FromZeros};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn, error};
@@ -24,6 +24,7 @@ pub struct BufferStats {
     pub overflows: AtomicU64,
     pub max_usage: AtomicU64,
 }
+
 
 /// Stream buffer for ring buffer operations
 pub struct StreamBuffer {
@@ -49,7 +50,7 @@ pub struct PacketBuffer {
 
 /// File header for captured data
 #[repr(C)]
-#[derive(Debug, Clone, Copy, IntoBytes, FromBytes, FromZeros, Pod, Zeroable)]
+#[derive(Debug, Clone, Copy, IntoBytes, FromBytes, FromZeros)]
 pub struct FileHeader {
     /// Magic number (0x43484452 = "CHDR")
     pub magic: u32,
@@ -122,9 +123,9 @@ impl StreamBuffer {
     }
     
     /// Write a packet to the buffer
-    pub fn write_packet(&self, packet: PacketBuffer) -> Result<(), BufferError> {
+    pub fn write_packet(&self, packet: PacketBuffer) -> Result<()> {
         if self.closed.load(Ordering::Acquire) {
-            return Err(BufferError::Closed);
+            return Err(Error::ChannelError("Buffer closed".to_string()));
         }
         
         let packet_size = packet.data.len();
@@ -153,7 +154,7 @@ impl StreamBuffer {
             }
             Err(_) => {
                 self.stats.overflows.fetch_add(1, Ordering::Relaxed);
-                Err(BufferError::Overflow)
+                Err(Error::ProcessingError("Buffer overflow".to_string()))
             }
         }
     }
@@ -169,9 +170,9 @@ impl StreamBuffer {
             }
             Err(_) => {
                 if self.closed.load(Ordering::Acquire) {
-                    Err(BufferError::Closed)
+                    Err(Error::ChannelError("Buffer closed".to_string()))
                 } else {
-                    Err(BufferError::Timeout)
+                    Err(Error::TimeoutError("No data available".to_string()))
                 }
             }
         }
@@ -184,11 +185,10 @@ impl StreamBuffer {
         loop {
             match self.read_packet() {
                 Ok(packet) => return Ok(packet),
-                Err(BufferError::Timeout) => {
+                Err(Error::TimeoutError(_)) => {
                     if start.elapsed() > timeout {
-                        return Err(BufferError::Timeout);
+                        return Err(Error::TimeoutError("Read timeout".to_string()));
                     }
-                    // Small async yield
                     tokio::time::sleep(Duration::from_micros(100)).await;
                 }
                 Err(e) => return Err(e),

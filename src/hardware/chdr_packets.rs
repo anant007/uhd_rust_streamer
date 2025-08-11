@@ -17,7 +17,7 @@ pub enum PacketType {
 
 /// CHDR header structure (64-bit)
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, Pod, Zeroable)]
+#[derive(Debug, Clone, Copy, IntoBytes, FromBytes, FromZeros, Pod, Zeroable)]
 pub struct ChdrHeader {
     pub header: u64,
 }
