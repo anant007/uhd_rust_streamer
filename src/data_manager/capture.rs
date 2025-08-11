@@ -5,8 +5,9 @@ use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use rtrb::{Producer, Consumer, RingBuffer};
-use zerocopy::{AsBytes, FromBytes};
-use rkyv::{Archive, Deserialize, Serialize};
+use zerocopy::{AsBytes, FromBytes, FromZeroes};
+use bytemuck::{Pod, Zeroable};
+use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn, error};
 
 use crate::{SystemMessage, MessageBus, Result, Error};
@@ -14,8 +15,7 @@ use crate::config::SystemConfig;
 use crate::hardware::{ChdrPacket, TimeSpec};
 
 /// Packet buffer for ring buffer storage
-#[derive(Debug, Clone, Archive, Deserialize, Serialize)]
-#[archive(check_bytes)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PacketBuffer {
     /// Stream ID
     pub stream_id: u32,
@@ -29,7 +29,7 @@ pub struct PacketBuffer {
 
 /// File header for captured data
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes)]
+#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, Pod, Zeroable)]
 pub struct FileHeader {
     /// Magic number (0x43484452 = "CHDR")
     pub magic: u32,
@@ -39,8 +39,10 @@ pub struct FileHeader {
     pub stream_id: u32,
     /// Tick rate
     pub tick_rate: f64,
-    /// PPS reset used
-    pub pps_reset_used: bool,
+    /// PPS reset used (as u8 for POD compatibility)
+    pub pps_reset_used: u8,
+    /// Padding for alignment
+    pub _padding: [u8; 3],
     /// PPS reset time
     pub pps_reset_time_sec: f64,
     /// Reserved for future use
@@ -54,42 +56,12 @@ impl Default for FileHeader {
             version: 4,
             stream_id: 0,
             tick_rate: 200e6,
-            pps_reset_used: false,
+            pps_reset_used: 0,
+            _padding: [0; 3],
             pps_reset_time_sec: 0.0,
             reserved: [0; 32],
         }
     }
-}
-
-/// Stream buffer using lock-free ring buffer
-pub struct StreamBuffer {
-    /// Stream ID
-    stream_id: usize,
-    /// Producer for writing packets
-    producer: Producer<PacketBuffer>,
-    /// Consumer for reading packets
-    consumer: Consumer<PacketBuffer>,
-    /// Statistics
-    stats: Arc<BufferStats>,
-    /// Closed flag
-    closed: AtomicBool,
-}
-
-/// Buffer statistics
-#[derive(Debug, Default)]
-pub struct BufferStats {
-    /// Total packets written
-    pub packets_written: AtomicU64,
-    /// Total packets read
-    pub packets_read: AtomicU64,
-    /// Total bytes written
-    pub bytes_written: AtomicU64,
-    /// Total bytes read
-    pub bytes_read: AtomicU64,
-    /// Overflow count
-    pub overflows: AtomicU64,
-    /// Maximum usage
-    pub max_usage: AtomicU64,
 }
 
 /// Buffer error types

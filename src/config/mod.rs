@@ -1,96 +1,105 @@
-//! Error types and handling for the RFNoC tool
+//! Configuration management module
 
-use thiserror::Error;
+pub mod device_config;
+pub mod graph_config;
+pub mod stream_config;
+pub mod validation;
 
-/// Main error type for the RFNoC tool
-#[derive(Debug, Error)]
-pub enum Error {
-    /// Hardware device error
-    #[error("Hardware error: {0}")]
-    HardwareError(String),
-    
-    /// Configuration error
-    #[error("Configuration error: {0}")]
-    ConfigError(String),
-    
-    /// Data processing error
-    #[error("Processing error: {0}")]
-    ProcessingError(String),
-    
-    /// I/O error
-    #[error("I/O error: {0}")]
-    IoError(#[from] std::io::Error),
-    
-    /// Channel communication error
-    #[error("Channel error: {0}")]
-    ChannelError(String),
-    
-    /// System-level error
-    #[error("System error: {0}")]
-    SystemError(String),
-    
-    /// UHD API error
-    #[error("UHD error: {0}")]
-    UhdError(String),
-    
-    /// Timeout error
-    #[error("Operation timed out: {0}")]
-    TimeoutError(String),
-    
-    /// Validation error
-    #[error("Validation error: {0}")]
-    ValidationError(String),
-    
-    /// Export error
-    #[error("Export error: {0}")]
-    ExportError(String),
-    
-    /// YAML parsing error
-    #[error("YAML error: {0}")]
-    YamlError(#[from] serde_yaml::Error),
-    
-    /// CSV error
-    #[error("CSV error: {0}")]
-    CsvError(#[from] csv::Error),
-    
-    /// HDF5 error
-    #[error("HDF5 error: {0}")]
-    Hdf5Error(#[from] hdf5::Error),
-    
-    /// Other errors
-    #[error("Unknown error: {0}")]
-    Unknown(String),
+use std::path::Path;
+use std::fs;
+use serde::{Deserialize, Serialize};
+
+pub use device_config::{DeviceConfig, PpsResetConfig};
+pub use graph_config::{GraphConfig, ConnectionConfig, AutoConnectConfig};
+pub use stream_config::{StreamConfig, MultiStreamConfig, BufferConfig};
+
+use crate::{Error, Result};
+
+/// System-wide configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SystemConfig {
+    pub device: DeviceConfig,
+    pub stream: StreamConfig,
+    pub graph: GraphConfig,
+    pub logging: LoggingConfig,
+    pub performance: PerformanceConfig,
 }
 
-/// Result type alias using our Error type
-pub type Result<T> = std::result::Result<T, Error>;
-
-/// Extension trait for converting channel errors
-pub trait ChannelErrorExt<T> {
-    /// Convert channel send/recv errors to our error type
-    fn map_channel_err(self) -> Result<T>;
-}
-
-impl<T> ChannelErrorExt<T> for std::result::Result<T, async_channel::SendError<T>> {
-    fn map_channel_err(self) -> Result<T> {
-        self.map_err(|_| Error::ChannelError("Channel send failed".to_string()))
+impl SystemConfig {
+    /// Load configuration from file
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let content = fs::read_to_string(path)?;
+        serde_yml::from_str(&content)
+            .map_err(|e| Error::ConfigError(format!("Failed to parse config: {}", e)))
+    }
+    
+    /// Save configuration to file
+    pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let content = serde_yml::to_string(self)
+            .map_err(|e| Error::ConfigError(format!("Failed to serialize config: {}", e)))?;
+        fs::write(path, content)?;
+        Ok(())
     }
 }
 
-impl<T> ChannelErrorExt<T> for std::result::Result<T, async_channel::RecvError> {
-    fn map_channel_err(self) -> Result<T> {
-        self.map_err(|_| Error::ChannelError("Channel receive failed".to_string()))
+impl Default for SystemConfig {
+    fn default() -> Self {
+        Self {
+            device: DeviceConfig::default(),
+            stream: StreamConfig::default(),
+            graph: GraphConfig::default(),
+            logging: LoggingConfig::default(),
+            performance: PerformanceConfig::default(),
+        }
     }
 }
 
-impl<T, E> ChannelErrorExt<T> for std::result::Result<T, crossbeam::channel::SendError<E>> {
-    fn map_channel_err(self) -> Result<T> {
-        self.map_err(|_| Error::ChannelError("Crossbeam channel send failed".to_string()))
+/// Logging configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LoggingConfig {
+    pub level: String,
+    pub file: Option<String>,
+    pub format: String,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: "info".to_string(),
+            file: None,
+            format: "pretty".to_string(),
+        }
     }
 }
 
-impl<T> ChannelErrorExt<T> for std::result::Result<T, crossbeam::channel::RecvError> {
-    fn map_channel_err(self) -> Result<T> {
-        self.map_err(|_| Error::ChannelError("Crossbeam channel receive failed".to_string()))
+/// Performance configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PerformanceConfig {
+    pub worker_threads: usize,
+    pub cpu_affinity: Vec<usize>,
+    pub realtime_priority: Option<i32>,
+    pub lock_memory: bool,
+    pub use_huge_pages: bool,
+}
+
+impl Default for PerformanceConfig {
+    fn default() -> Self {
+        Self {
+            worker_threads: 4,
+            cpu_affinity: vec![],
+            realtime_priority: None,
+            lock_memory: false,
+            use_huge_pages: false,
+        }
     }
+}
+
+/// Configuration update message
+#[derive(Debug, Clone)]
+pub enum ConfigUpdate {
+    Device(DeviceConfig),
+    Stream(StreamConfig),
+    Graph(GraphConfig),
+    Logging(LoggingConfig),
+    Performance(PerformanceConfig),
 }
