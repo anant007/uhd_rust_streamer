@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use parking_lot::RwLock;
+use parking_lot::{RwLock, Mutex};
 use rtrb::{Producer, Consumer, RingBuffer};
 use zerocopy::{IntoBytes, FromBytes, FromZeros};
 use bytemuck::{Pod, Zeroable};
@@ -29,10 +29,11 @@ pub struct BufferStats {
 /// Stream buffer for ring buffer operations
 pub struct StreamBuffer {
     stream_id: usize,
-    producer: Producer<PacketBuffer>,
-    consumer: Consumer<PacketBuffer>,
+    producer: Mutex<Option<Producer<PacketBuffer>>>,
+    consumer: Mutex<Option<Consumer<PacketBuffer>>>,
+    capacity: usize,
     stats: Arc<BufferStats>,
-    closed: AtomicBool,
+    closed: Arc<AtomicBool>,
 }
 
 /// Packet buffer for ring buffer storage
@@ -99,71 +100,76 @@ pub enum BufferError {
 }
 
 impl StreamBuffer {
-    /// Create a new stream buffer
     pub fn new(stream_id: usize, capacity: usize) -> (Arc<Self>, Arc<Self>) {
         let (producer, consumer) = RingBuffer::new(capacity);
-        
         let stats = Arc::new(BufferStats::default());
-        
+        let closed = Arc::new(AtomicBool::new(false));
+
         let writer = Arc::new(Self {
             stream_id,
-            producer,
-            consumer: unsafe { std::mem::zeroed() }, // Will be replaced
+            producer: Mutex::new(Some(producer)),
+            consumer: Mutex::new(None),
+            capacity,
             stats: stats.clone(),
-            closed: AtomicBool::new(false),
+            closed: closed.clone(),
         });
-        
+
         let reader = Arc::new(Self {
             stream_id,
-            producer: unsafe { std::mem::zeroed() }, // Will be replaced
-            consumer,
+            producer: Mutex::new(None),
+            consumer: Mutex::new(Some(consumer)),
+            capacity,
             stats,
-            closed: AtomicBool::new(false),
+            closed,
         });
-        
+
         (writer, reader)
     }
     
     /// Write a packet to the buffer
-    pub fn write_packet(&self, packet: PacketBuffer) -> Result<()> {
+    pub fn write_packet(&self, packet: PacketBuffer) -> std::result::Result<(), BufferError> {
         if self.closed.load(Ordering::Acquire) {
-            return Err(Error::ChannelError("Buffer closed".to_string()));
+            return Err(BufferError::Closed);
         }
-        
         let packet_size = packet.data.len();
-        
-        match self.producer.push(packet) {
+
+        let mut prod_guard = self.producer.lock();
+        let prod = prod_guard.as_mut().ok_or(BufferError::Closed)?;
+
+        match prod.push(packet) {
             Ok(()) => {
                 self.stats.packets_written.fetch_add(1, Ordering::Relaxed);
                 self.stats.bytes_written.fetch_add(packet_size as u64, Ordering::Relaxed);
-                
-                // Update max usage
-                let current_usage = self.producer.slots() as u64;
-                let mut max_usage = self.stats.max_usage.load(Ordering::Relaxed);
-                while current_usage > max_usage {
+
+                // rtrb::Producer::slots() returns the number of FREE slots.
+                let free = prod.slots() as u64;
+                let used = (self.capacity as u64).saturating_sub(free);
+
+                // Track max observed usage (in packets)
+                let mut prev = self.stats.max_usage.load(Ordering::Relaxed);
+                while used > prev {
                     match self.stats.max_usage.compare_exchange_weak(
-                        max_usage,
-                        current_usage,
-                        Ordering::Release,
-                        Ordering::Relaxed,
+                        prev, used, Ordering::Release, Ordering::Relaxed
                     ) {
                         Ok(_) => break,
-                        Err(x) => max_usage = x,
+                        Err(x) => prev = x,
                     }
                 }
-                
                 Ok(())
             }
             Err(_) => {
                 self.stats.overflows.fetch_add(1, Ordering::Relaxed);
-                Err(Error::ProcessingError("Buffer overflow".to_string()))
+                Err(BufferError::Overflow)
             }
         }
     }
     
     /// Read a packet from the buffer
-    pub fn read_packet(&self) -> Result<PacketBuffer, BufferError> {
-        match self.consumer.pop() {
+    pub fn read_packet(&self) -> std::result::Result<PacketBuffer, BufferError> {
+        let mut cons_guard = self.consumer.lock();
+        let cons = cons_guard.as_mut().ok_or(BufferError::Closed)?;
+
+        match cons.pop() {
             Ok(packet) => {
                 let packet_size = packet.data.len();
                 self.stats.packets_read.fetch_add(1, Ordering::Relaxed);
@@ -172,26 +178,32 @@ impl StreamBuffer {
             }
             Err(_) => {
                 if self.closed.load(Ordering::Acquire) {
-                    Err(Error::ChannelError("Buffer closed".to_string()))
+                    Err(BufferError::Closed)
                 } else {
-                    Err(Error::TimeoutError("No data available".to_string()))
+                    Err(BufferError::Timeout)
                 }
             }
         }
     }
     
-    /// Read a packet with timeout
-    pub async fn read_packet_timeout(&self, timeout: Duration) -> Result<PacketBuffer, BufferError> {
+    /// Read a packet with timeout (keep one async runtime consistently; example shows both)
+    pub async fn read_packet_timeout(&self, timeout: Duration)
+        -> std::result::Result<PacketBuffer, BufferError>
+    {
         let start = Instant::now();
-        
         loop {
             match self.read_packet() {
-                Ok(packet) => return Ok(packet),
-                Err(Error::TimeoutError(_)) => {
+                Ok(p) => return Ok(p),
+                Err(BufferError::Timeout) => {
                     if start.elapsed() > timeout {
-                        return Err(Error::TimeoutError("Read timeout".to_string()));
+                        return Err(BufferError::Timeout);
                     }
-                    tokio::time::sleep(Duration::from_micros(100)).await;
+                    // Pick ONE runtime in your project. If you use tokio, keep the tokio branch.
+                    #[cfg(feature = "tokio")]
+                    { tokio::time::sleep(Duration::from_micros(100)).await; }
+
+                    #[cfg(not(feature = "tokio"))]
+                    { smol::Timer::after(Duration::from_micros(100)).await; }
                 }
                 Err(e) => return Err(e),
             }
@@ -210,9 +222,15 @@ impl StreamBuffer {
     
     /// Get current usage percentage
     pub fn get_usage_percentage(&self) -> f32 {
-        let capacity = self.producer.capacity();
-        let used = self.producer.slots();
-        (used as f32 / capacity as f32) * 100.0
+        if let Some(prod) = self.producer.lock().as_ref() {
+            let free = prod.slots();
+            let used = self.capacity.saturating_sub(free);
+            (used as f32 / self.capacity as f32) * 100.0
+        } else {
+            // Reader handle has no producer; use best-known max usage
+            let used = self.stats.max_usage.load(Ordering::Relaxed) as usize;
+            (used as f32 / self.capacity as f32) * 100.0
+        }
     }
     
     /// Get packet count
