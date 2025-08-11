@@ -1,6 +1,6 @@
 //! CHDR packet handling implementation
 
-use zerocopy::{AsBytes, FromBytes, FromZeroes};
+use zerocopy::{IntoBytes, FromBytes, FromZeros};
 use bytemuck::{Pod, Zeroable};
 
 /// CHDR packet types

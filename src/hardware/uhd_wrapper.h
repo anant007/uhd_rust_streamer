@@ -10,7 +10,7 @@
 #include <uhd/stream.hpp>
 
 #include "rust/cxx.h"
-#include "rfnoc-tool/src/hardware/uhd_bindings.rs.h"
+
 // #include "target/cxxbridge/rust/cxx.h"
 
 namespace rfnoc_tool {
@@ -19,7 +19,7 @@ namespace rfnoc_tool {
 class RfnocGraphWrapper;
 class RxStreamerWrapper;
 class BlockControlWrapper;
-
+}
 // Forward declarations only - structs are defined by CXX
 // struct StreamArgs;
 // struct DeviceArgs;
@@ -61,6 +61,11 @@ class BlockControlWrapper;
 // };
 
 // Wrapper classes
+
+
+#include "rfnoc-tool/src/hardware/uhd_bindings.rs.h"
+
+namespace rfnoc_tool {
 class RfnocGraphWrapper {
 public:
     RfnocGraphWrapper(uhd::rfnoc::rfnoc_graph::sptr graph);

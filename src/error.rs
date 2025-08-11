@@ -33,6 +33,10 @@ pub enum Error {
     #[error("UHD error: {0}")]
     UhdError(String),
     
+    /// JSON error
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    
     /// Timeout error
     #[error("Operation timed out: {0}")]
     TimeoutError(String),

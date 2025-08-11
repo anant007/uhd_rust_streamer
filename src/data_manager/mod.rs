@@ -223,11 +223,14 @@ impl DataManager {
             
             // Write file header
             let header = capture::FileHeader {
+                magic: 0x43484452,
                 version: 4,
                 stream_id: stream_id as u32,
                 tick_rate: config.read().stream.tick_rate,
-                pps_reset_used: config.read().device.pps_reset.enable,
-                pps_reset_time_sec: 0.0, // Will be updated when known
+                pps_reset_used: if config.read().device.pps_reset.enable { 1 } else { 0 },
+                _padding: [0; 3],
+                pps_reset_time_sec: 0.0,
+                reserved: [0; 32],
             };
             writer.write_header(&header).await?;
             

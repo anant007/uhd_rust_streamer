@@ -4,6 +4,7 @@ use cxx::UniquePtr;
 use std::pin::Pin;
 use std::time::Duration;
 use crate::error::{Error, Result};
+use std::sync::Mutex;
 
 #[cxx::bridge(namespace = "rfnoc_tool")]
 mod ffi {
@@ -241,8 +242,11 @@ impl StreamArgs {
 
 /// RFNoC graph wrapper
 pub struct RfnocGraph {
-    inner: UniquePtr<ffi::RfnocGraphWrapper>,
+    inner: Mutex<UniquePtr<ffi::RfnocGraphWrapper>>,
 }
+
+unsafe impl Send for RfnocGraph {}
+unsafe impl Sync for RfnocGraph {}
 
 impl RfnocGraph {
     /// Create a new RFNoC graph
@@ -254,12 +258,13 @@ impl RfnocGraph {
         let inner = ffi::create_rfnoc_graph(&args)
             .map_err(|e| Error::UhdError(e.to_string()))?;
         
-        Ok(Self { inner })
+        Ok(Self { 
+            inner: Mutex::new(inner),
+        })
     }
     
-    /// Get available block IDs
     pub fn get_block_ids(&self) -> Vec<String> {
-        self.inner.get_block_ids()
+        self.inner.lock().unwrap().get_block_ids()
     }
     
     /// Connect two blocks

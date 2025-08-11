@@ -14,6 +14,26 @@ use crate::{SystemMessage, MessageBus, Result, Error};
 use crate::config::SystemConfig;
 use crate::hardware::{ChdrPacket, TimeSpec};
 
+/// Buffer statistics
+#[derive(Debug, Default)]
+pub struct BufferStats {
+    pub packets_written: AtomicU64,
+    pub bytes_written: AtomicU64,
+    pub packets_read: AtomicU64,
+    pub bytes_read: AtomicU64,
+    pub overflows: AtomicU64,
+    pub max_usage: AtomicU64,
+}
+
+/// Stream buffer for ring buffer operations
+pub struct StreamBuffer {
+    stream_id: usize,
+    producer: Producer<PacketBuffer>,
+    consumer: Consumer<PacketBuffer>,
+    stats: Arc<BufferStats>,
+    closed: AtomicBool,
+}
+
 /// Packet buffer for ring buffer storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PacketBuffer {
@@ -29,7 +49,7 @@ pub struct PacketBuffer {
 
 /// File header for captured data
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, Pod, Zeroable)]
+#[derive(Debug, Clone, Copy, IntoBytes, FromBytes, FromZeros, Pod, Zeroable)]
 pub struct FileHeader {
     /// Magic number (0x43484452 = "CHDR")
     pub magic: u32,

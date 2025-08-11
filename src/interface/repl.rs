@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 use rustyline::error::ReadlineError;
-use rustyline::{Editor, Config, EditMode, CompletionType};
+use rustyline::{Editor, Config, EditMode, CompletionType, DefaultEditor};
+use rustyline::history::FileHistory;
 use rustyline::highlight::Highlighter;
 use rustyline::hint::{Hinter, HistoryHinter};
 use rustyline::validate::{Validator, ValidationContext, ValidationResult};
@@ -395,7 +396,7 @@ impl ReplInterface {
             hinter: HistoryHinter {},
         };
         
-        let mut editor = Editor::with_config(config);
+        let mut editor = Editor::with_config(config)?;
         editor.set_helper(Some(helper));
         
         // Load history if it exists

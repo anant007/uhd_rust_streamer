@@ -29,13 +29,13 @@ impl SystemConfig {
     /// Load configuration from file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path)?;
-        serde_yml::from_str(&content)
+        serde_yaml::from_str(&content)
             .map_err(|e| Error::ConfigError(format!("Failed to parse config: {}", e)))
     }
     
     /// Save configuration to file
     pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let content = serde_yml::to_string(self)
+        let content = serde_yaml::to_string(self)
             .map_err(|e| Error::ConfigError(format!("Failed to serialize config: {}", e)))?;
         fs::write(path, content)?;
         Ok(())
