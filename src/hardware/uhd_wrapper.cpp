@@ -23,13 +23,12 @@ rust::Vec<rust::String> RfnocGraphWrapper::get_block_ids() const {
 }
 
 std::unique_ptr<BlockControlWrapper> RfnocGraphWrapper::get_block(rust::Str block_id) const {
-    std::string block_id_str(block_id.data(), block_id.size());// Was failing due to incorrect conversion from rust string to std::string, seems fixed now
+    std::string block_id_str(block_id.data(), block_id.size());
     uhd::rfnoc::block_id_t id(block_id_str);
-    // Use get_block<noc_block_base> instead of get_block with block_id
     auto block = graph_->get_block<uhd::rfnoc::noc_block_base>(id);
     if (!block) {
-        std::string error_msg = "Block not found: " + block_id_str;
-        throw rust::Error(error_msg); //Used string literal to get rid of rust::String conversion/initialisation error
+        // Throw a standard exception - CXX will convert it
+        throw std::runtime_error("Block not found: " + block_id_str);
     }
     return std::make_unique<BlockControlWrapper>(block);
 }
@@ -199,7 +198,8 @@ std::unique_ptr<RfnocGraphWrapper> create_rfnoc_graph(const DeviceArgs& args) {
         auto graph = uhd::rfnoc::rfnoc_graph::make(std::string(args.args));
         return std::make_unique<RfnocGraphWrapper>(graph);
     } catch (const uhd::exception& e) {
-        throw rust::Error(rust::String(e.what()));
+        // Re-throw as standard exception
+        throw std::runtime_error(e.what());
     }
 }
 

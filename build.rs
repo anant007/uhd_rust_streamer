@@ -26,6 +26,11 @@ fn main() {
     bridge.include(&uhd_include);
     bridge.include("/usr/local/include");
     bridge.include("/usr/include");
+
+    // IMPORTANT: Include the CXX build output directory
+    let out_dir = env::var("OUT_DIR").unwrap();
+    bridge.include(&out_dir);
+    bridge.include(format!("{}/cxxbridge", out_dir));
     
     if let Some(boost_path) = boost_include {
         bridge.include(boost_path);

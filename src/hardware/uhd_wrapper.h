@@ -10,7 +10,7 @@
 #include <uhd/stream.hpp>
 
 #include "rust/cxx.h"
-
+#include "rfnoc-tool/src/hardware/uhd_bindings.rs.h"
 // #include "target/cxxbridge/rust/cxx.h"
 
 namespace rfnoc_tool {
@@ -20,39 +20,45 @@ class RfnocGraphWrapper;
 class RxStreamerWrapper;
 class BlockControlWrapper;
 
-// FFI-compatible structures (matching Rust definitions)
-struct StreamArgs {
-    rust::String cpu_format;
-    rust::String otw_format;
-    rust::Vec<size_t> channels;
-    rust::String args;
-};
+// Forward declarations only - structs are defined by CXX
+// struct StreamArgs;
+// struct DeviceArgs;
+// struct TimeSpec;
+// struct RxMetadata;
+// struct GraphEdgeFFI;
 
-struct DeviceArgs {
-    rust::String args;
-};
+// struct StreamArgs {
+//     rust::String cpu_format;
+//     rust::String otw_format;
+//     rust::Vec<size_t> channels;
+//     rust::String args;
+// };
 
-struct TimeSpec {
-    uint64_t secs;
-    uint32_t nsecs;
-};
+// struct DeviceArgs {
+//     rust::String args;
+// };
 
-struct RxMetadata {
-    bool has_time_spec;
-    TimeSpec time_spec;
-    bool more_fragments;
-    size_t fragment_offset;
-    bool start_of_burst;
-    bool end_of_burst;
-    uint32_t error_code;
-};
+// struct TimeSpec {
+//     uint64_t secs;
+//     uint32_t nsecs;
+// };
 
-struct GraphEdgeFFI {
-    rust::String src_block_id;
-    size_t src_port;
-    rust::String dst_block_id;
-    size_t dst_port;
-};
+// struct RxMetadata {
+//     bool has_time_spec;
+//     TimeSpec time_spec;
+//     bool more_fragments;
+//     size_t fragment_offset;
+//     bool start_of_burst;
+//     bool end_of_burst;
+//     uint32_t error_code;
+// };
+
+// struct GraphEdgeFFI {
+//     rust::String src_block_id;
+//     size_t src_port;
+//     rust::String dst_block_id;
+//     size_t dst_port;
+// };
 
 // Wrapper classes
 class RfnocGraphWrapper {
