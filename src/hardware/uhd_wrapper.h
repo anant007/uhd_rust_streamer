@@ -68,8 +68,16 @@ class BlockControlWrapper;
 namespace rfnoc_tool {
 class RfnocGraphWrapper {
 public:
-    RfnocGraphWrapper(uhd::rfnoc::rfnoc_graph::sptr graph);
+    explicit RfnocGraphWrapper(uhd::rfnoc::rfnoc_graph::sptr graph);
     ~RfnocGraphWrapper();
+
+    // Disable copy operations
+    RfnocGraphWrapper(const RfnocGraphWrapper&) = delete;
+    RfnocGraphWrapper& operator=(const RfnocGraphWrapper&) = delete;
+    
+    // Enable move operations
+    RfnocGraphWrapper(RfnocGraphWrapper&&) = default;
+    RfnocGraphWrapper& operator=(RfnocGraphWrapper&&) = default;
 
     rust::Vec<rust::String> get_block_ids() const;
     std::unique_ptr<BlockControlWrapper> get_block(rust::Str block_id) const;
@@ -92,6 +100,14 @@ class RxStreamerWrapper {
 public:
     RxStreamerWrapper(uhd::rx_streamer::sptr streamer);
     ~RxStreamerWrapper();
+    
+    // Disable copy
+    RxStreamerWrapper(const RxStreamerWrapper&) = delete;
+    RxStreamerWrapper& operator=(const RxStreamerWrapper&) = delete;
+    
+    // Enable move
+    RxStreamerWrapper(RxStreamerWrapper&&) = default;
+    RxStreamerWrapper& operator=(RxStreamerWrapper&&) = default;
 
     size_t recv_samples(rust::Slice<uint8_t> buffs, size_t nsamps_per_buff,
                        RxMetadata& metadata, double timeout);
@@ -112,6 +128,13 @@ class BlockControlWrapper {
 public:
     BlockControlWrapper(uhd::rfnoc::noc_block_base::sptr block);
     ~BlockControlWrapper();
+    // Disable copy
+    BlockControlWrapper(const BlockControlWrapper&) = delete;
+    BlockControlWrapper& operator=(const BlockControlWrapper&) = delete;
+    
+    // Enable move
+    BlockControlWrapper(BlockControlWrapper&&) = default;
+    BlockControlWrapper& operator=(BlockControlWrapper&&) = default;
 
     rust::String get_block_type() const;
     size_t get_num_input_ports() const;

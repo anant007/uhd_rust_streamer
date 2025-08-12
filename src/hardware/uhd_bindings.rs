@@ -4,7 +4,6 @@ use cxx::UniquePtr;
 use std::pin::Pin;
 use std::time::Duration;
 use crate::error::{Error, Result};
-use std::sync::Mutex;
 
 #[cxx::bridge(namespace = "rfnoc_tool")]
 mod ffi {
@@ -202,6 +201,12 @@ impl DeviceArgs {
     }
 }
 
+impl Default for DeviceArgs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Stream arguments builder
 pub struct StreamArgs {
     cpu_format: String,
@@ -240,13 +245,13 @@ impl StreamArgs {
     }
 }
 
-/// RFNoC graph wrapper
+/// RFNoC graph wrapper - NO MUTEX!
 pub struct RfnocGraph {
-    inner: Mutex<UniquePtr<ffi::RfnocGraphWrapper>>,
+    inner: UniquePtr<ffi::RfnocGraphWrapper>,
 }
 
+// RfnocGraph is Send but not Sync - only one thread can own it at a time
 unsafe impl Send for RfnocGraph {}
-unsafe impl Sync for RfnocGraph {}
 
 impl RfnocGraph {
     /// Create a new RFNoC graph
@@ -258,13 +263,21 @@ impl RfnocGraph {
         let inner = ffi::create_rfnoc_graph(&args)
             .map_err(|e| Error::UhdError(e.to_string()))?;
         
-        Ok(Self { 
-            inner: Mutex::new(inner),
-        })
+        Ok(Self { inner })
     }
     
+    /// Get block IDs
     pub fn get_block_ids(&self) -> Vec<String> {
-        self.inner.lock().unwrap().get_block_ids()
+        self.inner.get_block_ids()
+    }
+    
+    /// Get a specific block
+    pub fn get_block(&self, block_id: &str) -> Result<BlockControl> {
+        let block = self.inner
+            .get_block(block_id)
+            .map_err(|e| Error::UhdError(e.to_string()))?;
+        
+        Ok(BlockControl { inner: block })
     }
     
     /// Connect two blocks
@@ -303,6 +316,40 @@ impl RfnocGraph {
             .map_err(|e| Error::UhdError(e.to_string()))
     }
     
+    /// Create an RX streamer
+    pub fn create_rx_streamer(&mut self, stream_args: &StreamArgs) -> Result<RxStreamer> {
+        let args = ffi::StreamArgs {
+            cpu_format: stream_args.cpu_format.clone(),
+            otw_format: stream_args.otw_format.clone(),
+            channels: stream_args.channels.clone(),
+            args: stream_args.args
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<_>>()
+                .join(","),
+        };
+        
+        let streamer = self.inner
+            .pin_mut()
+            .create_rx_streamer(&args)
+            .map_err(|e| Error::UhdError(e.to_string()))?;
+        
+        Ok(RxStreamer { inner: streamer })
+    }
+    
+    /// Connect RX streamer to a block
+    pub fn connect_rx_streamer(
+        &mut self,
+        streamer: &RxStreamer,
+        block_id: &str,
+        port: usize,
+    ) -> Result<()> {
+        self.inner
+            .pin_mut()
+            .connect_rx_streamer(&streamer.inner, block_id, port)
+            .map_err(|e| Error::UhdError(e.to_string()))
+    }
+    
     /// Get tick rate
     pub fn get_tick_rate(&self) -> f64 {
         self.inner.get_tick_rate()
@@ -335,6 +382,48 @@ pub struct GraphEdge {
     pub src_port: usize,
     pub dst_block_id: String,
     pub dst_port: usize,
+}
+
+/// Block control wrapper
+pub struct BlockControl {
+    inner: UniquePtr<ffi::BlockControlWrapper>,
+}
+
+impl BlockControl {
+    /// Get block type
+    pub fn get_block_type(&self) -> String {
+        self.inner.get_block_type()
+    }
+    
+    /// Get number of input ports
+    pub fn get_num_input_ports(&self) -> usize {
+        self.inner.get_num_input_ports()
+    }
+    
+    /// Get number of output ports
+    pub fn get_num_output_ports(&self) -> usize {
+        self.inner.get_num_output_ports()
+    }
+    
+    /// Get property names
+    pub fn get_property_names(&self) -> Vec<String> {
+        self.inner.get_property_names()
+    }
+    
+    /// Set double property
+    pub fn set_property_double(&mut self, name: &str, value: f64, port: usize) -> Result<()> {
+        self.inner
+            .pin_mut()
+            .set_property_double(name, value, port)
+            .map_err(|e| Error::UhdError(e.to_string()))
+    }
+    
+    /// Get double property
+    pub fn get_property_double(&self, name: &str, port: usize) -> Result<f64> {
+        self.inner
+            .get_property_double(name, port)
+            .map_err(|e| Error::UhdError(e.to_string()))
+    }
 }
 
 /// RX streamer wrapper
