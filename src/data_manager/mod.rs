@@ -9,10 +9,10 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::collections::HashMap;
 use parking_lot::RwLock;
 use dashmap::DashMap;
-use crossbeam::channel;
+// use crossbeam::channel;
 use tracing::{debug, info, warn, error};
 
-use crate::{SystemMessage, MessageBus, Result, Error};
+use crate::{MessageBus, Result};
 use crate::config::SystemConfig;
 use crate::processing::StreamDataMessage;
 
@@ -29,17 +29,17 @@ pub struct DataManager {
     /// Capture manager
     capture_manager: Arc<CaptureManager>,
     /// Export manager
-    export_manager: Arc<ExportManager>,
+    export_manager: Arc<RwLock<ExportManager>>,
     /// Storage backend
     storage_backend: Arc<dyn StorageBackend>,
     /// Active streams
-    active_streams: DashMap<AtomicUsize, StreamInfo>,
+    active_streams: DashMap<usize, StreamInfo>,
     /// Statistics
     stats: Arc<DataManagerStats>,
 }
 
 /// Stream information
-#[derive(Debug, Clone)]
+// #[derive(Debug, Clone)]
 struct StreamInfo {
     /// Stream ID
     stream_id: usize,
@@ -83,10 +83,10 @@ impl DataManager {
             message_bus.clone(),
         ));
         
-        let export_manager = Arc::new(ExportManager::new(
+        let export_manager = Arc::new(RwLock::new(ExportManager::new(
             config.clone(),
             storage_backend.clone(),
-        ));
+        )));
         
         Ok(Self {
             config,
@@ -107,7 +107,7 @@ impl DataManager {
         self.capture_manager.start().await?;
         
         // Start export manager
-        self.export_manager.start().await?;
+        self.export_manager.write().start().await?;
         
         Ok(())
     }
@@ -127,7 +127,7 @@ impl DataManager {
         self.capture_manager.stop().await?;
         
         // Stop export manager
-        self.export_manager.stop().await?;
+        self.export_manager.write().stop().await?;
         
         Ok(())
     }
@@ -226,9 +226,10 @@ impl DataManager {
                 magic: 0x43484452,
                 version: 4,
                 stream_id: stream_id as u32,
+                _pad0: [0; 4],
                 tick_rate: config.read().stream.tick_rate,
                 pps_reset_used: if config.read().device.pps_reset.enable { 1 } else { 0 },
-                _padding: [0; 3],
+                _pad1: [0; 7],
                 pps_reset_time_sec: 0.0,
                 reserved: [0; 32],
             };
@@ -278,7 +279,7 @@ impl DataManager {
             time_range: None,
         };
         
-        self.export_manager.queue_export(request).await?;
+        self.export_manager.write().queue_export(request).await?;
         Ok(())
     }
     
