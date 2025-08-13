@@ -4,6 +4,8 @@ use cxx::UniquePtr;
 use std::pin::Pin;
 use std::time::Duration;
 use crate::error::{Error, Result};
+use std::sync::Arc;
+use parking_lot::Mutex;
 
 #[cxx::bridge(namespace = "rfnoc_tool")]
 mod ffi {
@@ -246,12 +248,20 @@ impl StreamArgs {
 }
 
 /// RFNoC graph wrapper - NO MUTEX!
+// pub struct RfnocGraph {
+//     inner: UniquePtr<ffi::RfnocGraphWrapper>,
+// }
+
+/// RFNoC graph wrapper with proper thread safety
 pub struct RfnocGraph {
-    inner: UniquePtr<ffi::RfnocGraphWrapper>,
+    // Use parking_lot for better performance and simpler API
+    inner: parking_lot::Mutex<Option<UniquePtr<ffi::RfnocGraphWrapper>>>,
 }
+
 
 // RfnocGraph is Send but not Sync - only one thread can own it at a time
 unsafe impl Send for RfnocGraph {}
+unsafe impl Sync for RfnocGraph {}
 
 impl RfnocGraph {
     /// Create a new RFNoC graph
@@ -263,18 +273,27 @@ impl RfnocGraph {
         let inner = ffi::create_rfnoc_graph(&args)
             .map_err(|e| Error::UhdError(e.to_string()))?;
         
-        Ok(Self { inner })
+        Ok(Self { 
+            inner: parking_lot::Mutex::new(Some(inner)),
+        })
     }
     
-    /// Get block IDs
+    /// Get available block IDs
     pub fn get_block_ids(&self) -> Vec<String> {
-        self.inner.get_block_ids()
+        self.inner
+            .lock()
+            .as_ref()
+            .map(|inner| inner.get_block_ids())
+            .unwrap_or_default()
     }
     
     /// Get a specific block
     pub fn get_block(&self, block_id: &str) -> Result<BlockControl> {
-        let block = self.inner
-            .get_block(block_id)
+        let guard = self.inner.lock();
+        let inner = guard.as_ref()
+            .ok_or_else(|| Error::UhdError("Graph not initialized".to_string()))?;
+        
+        let block = inner.get_block(block_id)
             .map_err(|e| Error::UhdError(e.to_string()))?;
         
         Ok(BlockControl { inner: block })
@@ -282,56 +301,108 @@ impl RfnocGraph {
     
     /// Connect two blocks
     pub fn connect(
-        &mut self,
+        &self,  // Note: &self, not &mut self - better for concurrent use
         src_block: &str,
         src_port: usize,
         dst_block: &str,
         dst_port: usize,
     ) -> Result<()> {
-        self.inner
-            .pin_mut()
-            .connect_blocks(src_block, src_port, dst_block, dst_port)
+        let mut guard = self.inner.lock();
+        let inner = guard.as_mut()
+            .ok_or_else(|| Error::UhdError("Graph not initialized".to_string()))?;
+
+        // let x = 
+        
+        // SAFETY: The mutex guard ensures the pointer remains valid for the duration
+        // let pinned = unsafe { Pin::new_unchecked(inner) };
+        
+        inner.pin_mut().connect_blocks(src_block, src_port, dst_block, dst_port)
             .map_err(|e| Error::UhdError(e.to_string()))
     }
     
     /// Enumerate active connections
     pub fn enumerate_connections(&self) -> Vec<GraphEdge> {
         self.inner
-            .enumerate_connections()
-            .into_iter()
-            .map(|edge| GraphEdge {
-                src_block_id: edge.src_block_id,
-                src_port: edge.src_port,
-                dst_block_id: edge.dst_block_id,
-                dst_port: edge.dst_port,
+            .lock()
+            .as_ref()
+            .map(|inner| {
+                inner.enumerate_connections()
+                    .into_iter()
+                    .map(|edge| GraphEdge {
+                        src_block_id: edge.src_block_id,
+                        src_port: edge.src_port,
+                        dst_block_id: edge.dst_block_id,
+                        dst_port: edge.dst_port,
+                    })
+                    .collect()
             })
-            .collect()
+            .unwrap_or_default()
     }
     
     /// Commit the graph
-    pub fn commit(&mut self) -> Result<()> {
-        self.inner
-            .pin_mut()
-            .commit_graph()
+    pub fn commit(&self) -> Result<()> {
+        let mut guard = self.inner.lock();
+        let inner = guard.as_mut()
+            .ok_or_else(|| Error::UhdError("Graph not initialized".to_string()))?;
+        
+        inner.pin_mut().commit_graph()
             .map_err(|e| Error::UhdError(e.to_string()))
     }
     
-    /// Create an RX streamer
-    pub fn create_rx_streamer(&mut self, stream_args: &StreamArgs) -> Result<RxStreamer> {
+    /// Get tick rate
+    pub fn get_tick_rate(&self) -> f64 {
+        self.inner
+            .lock()
+            .as_ref()
+            .map(|inner| inner.get_tick_rate())
+            .unwrap_or(0.0)
+    }
+    
+    /// Set time at next PPS
+    pub fn set_time_next_pps(&self, time: crate::hardware::TimeSpec) -> Result<()> {
+        let time_spec = ffi::TimeSpec {
+            secs: time.secs,
+            nsecs: time.nsecs,
+        };
+        
+        let mut guard = self.inner.lock();
+        let inner = guard.as_mut()
+            .ok_or_else(|| Error::UhdError("Graph not initialized".to_string()))?;
+        
+        inner.pin_mut().set_time_next_pps(&time_spec)
+            .map_err(|e| Error::UhdError(e.to_string()))
+    }
+    
+    /// Get current time
+    pub fn get_time_now(&self) -> crate::hardware::TimeSpec {
+        self.inner
+            .lock()
+            .as_ref()
+            .map(|inner| {
+                let time = inner.get_time_now();
+                crate::hardware::TimeSpec::new(time.secs, time.nsecs)
+            })
+            .unwrap_or_else(|| crate::hardware::TimeSpec::new(0, 0))
+    }
+    
+    /// Create RX streamer
+    pub fn create_rx_streamer(&self, stream_args: &StreamArgs) -> Result<RxStreamer> {
         let args = ffi::StreamArgs {
             cpu_format: stream_args.cpu_format.clone(),
             otw_format: stream_args.otw_format.clone(),
             channels: stream_args.channels.clone(),
-            args: stream_args.args
-                .iter()
+            args: stream_args.args.iter()
                 .map(|(k, v)| format!("{}={}", k, v))
                 .collect::<Vec<_>>()
                 .join(","),
         };
         
-        let streamer = self.inner
-            .pin_mut()
-            .create_rx_streamer(&args)
+        let mut guard = self.inner.lock();
+        let inner = guard.as_mut()
+            .ok_or_else(|| Error::UhdError("Graph not initialized".to_string()))?;
+        
+        // let pinned = unsafe { Pin::new_unchecked(inner) };
+        let streamer = inner.pin_mut().create_rx_streamer(&args)
             .map_err(|e| Error::UhdError(e.to_string()))?;
         
         Ok(RxStreamer { inner: streamer })
@@ -339,39 +410,17 @@ impl RfnocGraph {
     
     /// Connect RX streamer to a block
     pub fn connect_rx_streamer(
-        &mut self,
+        &self,
         streamer: &RxStreamer,
         block_id: &str,
         port: usize,
     ) -> Result<()> {
-        self.inner
-            .pin_mut()
-            .connect_rx_streamer(&streamer.inner, block_id, port)
-            .map_err(|e| Error::UhdError(e.to_string()))
-    }
-    
-    /// Get tick rate
-    pub fn get_tick_rate(&self) -> f64 {
-        self.inner.get_tick_rate()
-    }
-    
-    /// Set time at next PPS
-    pub fn set_time_next_pps(&mut self, time: crate::hardware::TimeSpec) -> Result<()> {
-        let time_spec = ffi::TimeSpec {
-            secs: time.secs,
-            nsecs: time.nsecs,
-        };
+        let mut guard = self.inner.lock();
+        let inner = guard.as_mut()
+            .ok_or_else(|| Error::UhdError("Graph not initialized".to_string()))?;
         
-        self.inner
-            .pin_mut()
-            .set_time_next_pps(&time_spec)
+        inner.pin_mut().connect_rx_streamer(&streamer.inner, block_id, port)
             .map_err(|e| Error::UhdError(e.to_string()))
-    }
-    
-    /// Get current time
-    pub fn get_time_now(&self) -> crate::hardware::TimeSpec {
-        let time = self.inner.get_time_now();
-        crate::hardware::TimeSpec::new(time.secs, time.nsecs)
     }
 }
 
